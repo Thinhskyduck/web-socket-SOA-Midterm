@@ -12,7 +12,7 @@ async def websocket_kitchen(websocket: WebSocket):
     await websocket.accept()
     redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
     pubsub = redis_client.pubsub()
-    await pubsub.subscribe("queue_updates")
+    await pubsub.subscribe("kitchen_queue")
 
     try:
         while True:
@@ -24,7 +24,7 @@ async def websocket_kitchen(websocket: WebSocket):
     except Exception as e:
         print(f"[ERROR kitchen/ws] {e}")
         await websocket.close()
-        await pubsub.unsubscribe("queue_updates")
+        await pubsub.unsubscribe("kitchen_queue")
 
 
 @app.websocket("/kitchen/ws/menu")
