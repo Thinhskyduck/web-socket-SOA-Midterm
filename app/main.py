@@ -1,18 +1,17 @@
 import json
 import asyncio
-import aioredis
+import redis.asyncio as redis  # ✅ fix lỗi
 from fastapi import FastAPI, WebSocket
 
 app = FastAPI()
 
-# Redis URL (public từ Railway)
 REDIS_URL = "redis://metro.proxy.rlwy.net:19160"
 
 @app.websocket("/kitchen/ws")
 async def websocket_kitchen(websocket: WebSocket):
     await websocket.accept()
-    redis = await aioredis.from_url(REDIS_URL, decode_responses=True)
-    pubsub = redis.pubsub()
+    redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    pubsub = redis_client.pubsub()
     await pubsub.subscribe("queue_updates")
 
     try:
@@ -31,8 +30,8 @@ async def websocket_kitchen(websocket: WebSocket):
 @app.websocket("/kitchen/ws/menu")
 async def websocket_menu_updates(websocket: WebSocket):
     await websocket.accept()
-    redis = await aioredis.from_url(REDIS_URL, decode_responses=True)
-    pubsub = redis.pubsub()
+    redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    pubsub = redis_client.pubsub()
     await pubsub.subscribe("menu_updates")
 
     try:
