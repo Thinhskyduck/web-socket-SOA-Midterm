@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # URL API trên Railway
-RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.app/")
+RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.app")
+# RAILWAY_API_URL = "https://soa-deploy.up.railway.app"
 
 kitchen_clients = []
 menu_clients = []
