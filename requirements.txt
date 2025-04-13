@@ -3,3 +3,4 @@ uvicorn[standard]
 redis>=4.5.1
 sqlalchemy
 python-dotenv
+httpx
