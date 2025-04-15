@@ -1,5 +1,4 @@
 # websocket_server.py
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import json
 import asyncio
@@ -11,6 +10,7 @@ from redis_client import redis_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+app = FastAPI()
 
 # URL API trên Railway
 RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.app")
@@ -18,13 +18,6 @@ RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.ap
 
 kitchen_clients = []
 menu_clients = []
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-    for ws in kitchen_clients + menu_clients:
-        await ws.close()
-
-app = FastAPI(lifespan=lifespan)
 
 @app.websocket("/ws/order")
 async def websocket_order(websocket: WebSocket):
@@ -110,24 +103,19 @@ async def websocket_menu(websocket: WebSocket):
     try:
         async with asyncio.timeout(300):
             while True:
-                message = pubsub.get_message(timeout=0.1)
+                message = pubsub.get_message(timeout=1.0)
                 if message:
                     logger.info(f"Received message from Redis: {message}")
-                    print(message) #log message
                 if message and message["type"] == "message":
                     try:
-                        raw_data = message["data"]
-                        # if isinstance(raw_data, bytes):
-                        #     raw_data = raw_data.decode()
-
-                        data = json.loads(raw_data)
+                        data = json.loads(message["data"])
                         logger.info(f"Sending to client: {data}")
                         await websocket.send_json({"menu_update": data})
-                    except Exception as e:
-                        logger.error(f"Invalid JSON in Redis message: {str(e)}")
+                    except json.JSONDecodeError:
+                        logger.error("Invalid JSON in Redis message")
                 # Gửi heartbeat để giữ kết nối
                 # await websocket.send_json({"type": "heartbeat"})
-                # await asyncio.sleep(30)
+                # await asyncio.sleep(0.1)
     except asyncio.TimeoutError:
         logger.info("Menu WebSocket timeout")
     except WebSocketDisconnect:
@@ -139,3 +127,7 @@ async def websocket_menu(websocket: WebSocket):
         pubsub.close()
         await websocket.close()
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    for ws in kitchen_clients + menu_clients:
+        await ws.close()
