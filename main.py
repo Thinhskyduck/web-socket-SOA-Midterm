@@ -110,12 +110,13 @@ async def websocket_menu(websocket: WebSocket):
     try:
         async with asyncio.timeout(300):
             while True:
-                message = pubsub.get_message(timeout=1.0)
+                message = pubsub.get_message(timeout=0.1)
                 if message:
                     logger.info(f"Received message from Redis: {message}")
+                    print(message) #log message
                 if message and message["type"] == "message":
                     try:
-                        print(type(message["data"]))    #log type data
+                        print(type(message["data"]))    # log type data
                         
                         data = json.loads(message["data"].decode())
                         logger.info(f"Sending to client: {data}")
@@ -123,8 +124,8 @@ async def websocket_menu(websocket: WebSocket):
                     except json.JSONDecodeError:
                         logger.error("Invalid JSON in Redis message")
                 # Gửi heartbeat để giữ kết nối
-                await websocket.send_json({"type": "heartbeat"})
-                await asyncio.sleep(0.1)
+                # await websocket.send_json({"type": "heartbeat"})
+                # await asyncio.sleep(30)
     except asyncio.TimeoutError:
         logger.info("Menu WebSocket timeout")
     except WebSocketDisconnect:
