@@ -1,4 +1,5 @@
 # websocket_server.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import json
 import asyncio
@@ -129,7 +130,11 @@ async def websocket_menu(websocket: WebSocket):
         pubsub.close()
         await websocket.close()
 
-@app.event("shutdown")
-async def shutdown_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Code chạy khi ứng dụng tắt
     for ws in kitchen_clients + menu_clients:
         await ws.close()
+
+app = FastAPI(lifespan=lifespan)
