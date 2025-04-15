@@ -108,7 +108,9 @@ async def websocket_menu(websocket: WebSocket):
                     logger.info(f"Received message from Redis: {message}")
                 if message and message["type"] == "message":
                     try:
-                        data = json.loads(message["data"])
+                        print(type(message["data"]))    #log type data
+                        
+                        data = json.loads(message["data"].decode())
                         logger.info(f"Sending to client: {data}")
                         await websocket.send_json({"menu_update": data})
                     except json.JSONDecodeError:
@@ -127,7 +129,7 @@ async def websocket_menu(websocket: WebSocket):
         pubsub.close()
         await websocket.close()
 
-@app.on_event("shutdown")
+@app.event("shutdown")
 async def shutdown_event():
     for ws in kitchen_clients + menu_clients:
         await ws.close()
