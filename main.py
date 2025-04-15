@@ -117,8 +117,8 @@ async def websocket_menu(websocket: WebSocket):
                 if message and message["type"] == "message":
                     try:
                         raw_data = message["data"]
-                        if isinstance(raw_data, bytes):
-                            raw_data = raw_data.decode()
+                        # if isinstance(raw_data, bytes):
+                        #     raw_data = raw_data.decode()
 
                         data = json.loads(raw_data)
                         logger.info(f"Sending to client: {data}")
