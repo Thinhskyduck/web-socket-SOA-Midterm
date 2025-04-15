@@ -11,7 +11,6 @@ from redis_client import redis_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
 
 # URL API trên Railway
 RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.app")
@@ -19,6 +18,13 @@ RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.ap
 
 kitchen_clients = []
 menu_clients = []
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    for ws in kitchen_clients + menu_clients:
+        await ws.close()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.websocket("/ws/order")
 async def websocket_order(websocket: WebSocket):
@@ -130,11 +136,3 @@ async def websocket_menu(websocket: WebSocket):
         pubsub.close()
         await websocket.close()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-    # Code chạy khi ứng dụng tắt
-    for ws in kitchen_clients + menu_clients:
-        await ws.close()
-
-app = FastAPI(lifespan=lifespan)
