@@ -94,20 +94,27 @@ async def websocket_kitchen(websocket: WebSocket):
 @app.websocket("/ws/menu")
 async def websocket_menu(websocket: WebSocket):
     await websocket.accept()
+    logger.info("Client connected to /ws/menu")
     menu_clients.append(websocket)
     pubsub = redis_client.pubsub()
     pubsub.subscribe("kitchen:menu_updates")
+    logger.info("Subscribed to kitchen:menu_updates")
     
     try:
         async with asyncio.timeout(300):
             while True:
                 message = pubsub.get_message(timeout=1.0)
+                if message:
+                    logger.info(f"Received message from Redis: {message}")
                 if message and message["type"] == "message":
                     try:
                         data = json.loads(message["data"])
+                        logger.info(f"Sending to client: {data}")
                         await websocket.send_json({"menu_update": data})
                     except json.JSONDecodeError:
                         logger.error("Invalid JSON in Redis message")
+                # Gửi heartbeat để giữ kết nối
+                await websocket.send_json({"type": "heartbeat"})
                 await asyncio.sleep(0.1)
     except asyncio.TimeoutError:
         logger.info("Menu WebSocket timeout")
