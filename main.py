@@ -1,4 +1,3 @@
-# websocket_server.py
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import json
 import asyncio
@@ -12,48 +11,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# URL API trên Railway
 RAILWAY_API_URL = os.getenv("RAILWAY_API_URL", "https://soa-deploy.up.railway.app")
-# RAILWAY_API_URL = "https://soa-deploy.up.railway.app"
 
 kitchen_clients = []
 menu_clients = []
-
-# @app.websocket("/ws/order")
-# async def websocket_order(websocket: WebSocket):
-#     await websocket.accept()
-#     async with httpx.AsyncClient() as client:
-#         try:
-#             async with asyncio.timeout(300):
-#                 while True:
-#                     data = await websocket.receive_text()
-#                     try:
-#                         order_data = json.loads(data)
-#                     except json.JSONDecodeError:
-#                         await websocket.send_json({"error": "Invalid JSON data"})
-#                         continue
-
-#                     # Gửi order đến API Railway
-#                     try:
-#                         response = await client.post(
-#                             f"{RAILWAY_API_URL}/order/confirm",
-#                             json=order_data
-#                         )
-#                         if response.status_code != 200:
-#                             await websocket.send_json({"error": response.json().get("detail", "Failed to create order")})
-#                             continue
-#                         order_response = response.json()
-#                         await websocket.send_json({"status": "Order received", "order_id": order_response["order_id"]})
-#                     except httpx.HTTPError as e:
-#                         await websocket.send_json({"error": f"Failed to connect to API: {str(e)}"})
-#         except asyncio.TimeoutError:
-#             logger.info("Order WebSocket timeout")
-#         except WebSocketDisconnect:
-#             logger.info("Client disconnected from /ws/order")
-#         except Exception as e:
-#             logger.error(f"Order WebSocket error: {str(e)}")
-#         finally:
-#             await websocket.close()
 
 @app.get("/")
 def root():
@@ -63,41 +24,40 @@ def root():
 async def websocket_kitchen(websocket: WebSocket):
     await websocket.accept()
     kitchen_clients.append(websocket)
-    async with httpx.AsyncClient() as client:
-        pubsub = redis_client.pubsub()
-        pubsub.subscribe("kitchen:orders")
-        
-        try:
-            # Lấy danh sách order hiện tại từ API Railway
+    pubsub = redis_client.pubsub()
+    pubsub.subscribe("kitchen:orders")
+
+    try:
+        # Lấy đơn hàng từ Railway API
+        async with httpx.AsyncClient() as client:
             response = await client.get(f"{RAILWAY_API_URL}/kitchen/get-orders/")
             if response.status_code == 200:
                 pending_orders = response.json()
-                await websocket.send_json({"orders": pending_orders})
+                if websocket.client_state.name == "CONNECTED":
+                    await websocket.send_json({"orders": pending_orders})
 
-            async with asyncio.timeout(300):
-                while True:
-                    message = pubsub.get_message(timeout=1.0)
-                    if message and message["type"] == "message":
-                        try:
-                            data = json.loads(message["data"])
-                            await websocket.send_json({"order": data})
-                        except json.JSONDecodeError:
-                            logger.error("Invalid JSON in Redis message")
-                    await asyncio.sleep(0.1)
-        except asyncio.TimeoutError:
-            logger.info("Kitchen WebSocket timeout")
-        except WebSocketDisconnect:
-            kitchen_clients.remove(websocket)
-            logger.info("Kitchen client disconnected")
+        while True:
+            message = pubsub.get_message(timeout=1.0)
+            if message and message["type"] == "message":
+                try:
+                    data = json.loads(message["data"])
+                    if websocket.client_state.name == "CONNECTED":
+                        await websocket.send_json({"order": data})
+                except json.JSONDecodeError:
+                    logger.error("Invalid JSON in Redis message")
+            await asyncio.sleep(0.1)
+    except WebSocketDisconnect:
+        kitchen_clients.remove(websocket)
+        logger.info("Kitchen client disconnected")
+    except Exception as e:
+        logger.error(f"Kitchen WebSocket error: {str(e)}")
+    finally:
+        try:
+            pubsub.close()
+            if websocket.client_state.name == "CONNECTED":
+                await websocket.close()
         except Exception as e:
-            logger.error(f"Kitchen WebSocket error: {str(e)}")
-        finally:
-            try:
-                pubsub.close()
-                if not websocket.client_state.name == "DISCONNECTED":
-                    await websocket.close()
-            except Exception as e:
-                logger.warning(f"WebSocket close error: {str(e)}")
+            logger.warning(f"WebSocket close error: {str(e)}")
 
 @app.websocket("/ws/menu")
 async def websocket_menu(websocket: WebSocket):
@@ -107,37 +67,34 @@ async def websocket_menu(websocket: WebSocket):
     pubsub = redis_client.pubsub()
     pubsub.subscribe("kitchen:menu_updates")
     logger.info("Subscribed to kitchen:menu_updates")
-    
+
     try:
-        async with asyncio.timeout(300):
-            while True:
-                message = pubsub.get_message(timeout=1.0)
-                if message:
-                    logger.info(f"Received message from Redis: {message}")
-                if message and message["type"] == "message":
-                    try:
-                        data = json.loads(message["data"])
-                        logger.info(f"Sending to client: {data}")
+        while True:
+            message = pubsub.get_message(timeout=1.0)
+            if message:
+                logger.info(f"Received message from Redis: {message}")
+            if message and message["type"] == "message":
+                try:
+                    data = json.loads(message["data"])
+                    logger.info(f"Sending to client: {data}")
+                    if websocket.client_state.name == "CONNECTED":
                         await websocket.send_json({"menu_update": data})
-                    except json.JSONDecodeError:
-                        logger.error("Invalid JSON in Redis message")
-                # Gửi heartbeat để giữ kết nối
-                # await websocket.send_json({"type": "heartbeat"})
-                # await asyncio.sleep(0.1)
-    except asyncio.TimeoutError:
-        logger.info("Menu WebSocket timeout")
+                except json.JSONDecodeError:
+                    logger.error("Invalid JSON in Redis message")
+
+            # Gửi heartbeat mỗi 30 giây để giữ kết nối (tuỳ chọn)
+            await asyncio.sleep(30)
+            if websocket.client_state.name == "CONNECTED":
+                await websocket.send_json({"type": "heartbeat"})
     except WebSocketDisconnect:
         menu_clients.remove(websocket)
         logger.info("Menu client disconnected")
     except Exception as e:
         logger.error(f"Menu WebSocket error: {str(e)}")
-    # finally:
-    #     pubsub.close()
-    #     await websocket.close()
     finally:
         try:
             pubsub.close()
-            if not websocket.client_state.name == "DISCONNECTED":
+            if websocket.client_state.name == "CONNECTED":
                 await websocket.close()
         except Exception as e:
             logger.warning(f"WebSocket close error: {str(e)}")
@@ -145,4 +102,8 @@ async def websocket_menu(websocket: WebSocket):
 @app.on_event("shutdown")
 async def shutdown_event():
     for ws in kitchen_clients + menu_clients:
-        await ws.close()
+        try:
+            if ws.client_state.name == "CONNECTED":
+                await ws.close()
+        except Exception as e:
+            logger.warning(f"Error closing WebSocket: {str(e)}")
