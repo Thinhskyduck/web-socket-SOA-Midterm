@@ -68,11 +68,21 @@ async def websocket_menu(websocket: WebSocket):
     pubsub.subscribe("kitchen:menu_updates")
     logger.info("Subscribed to kitchen:menu_updates")
 
+    async def send_heartbeat():
+        while True:
+            await asyncio.sleep(30)
+            if websocket.client_state.name == "CONNECTED":
+                try:
+                    await websocket.send_json({"type": "heartbeat"})
+                except Exception as e:
+                    logger.warning(f"Failed to send heartbeat: {str(e)}")
+                    break
+
+    heartbeat_task = asyncio.create_task(send_heartbeat())
+
     try:
         while True:
             message = pubsub.get_message(timeout=1.0)
-            if message:
-                logger.info(f"Received message from Redis: {message}")
             if message and message["type"] == "message":
                 try:
                     data = json.loads(message["data"])
@@ -81,23 +91,21 @@ async def websocket_menu(websocket: WebSocket):
                         await websocket.send_json({"menu_update": data})
                 except json.JSONDecodeError:
                     logger.error("Invalid JSON in Redis message")
-
-            # Gửi heartbeat mỗi 30 giây để giữ kết nối (tuỳ chọn)
-            await asyncio.sleep(30)
-            if websocket.client_state.name == "CONNECTED":
-                await websocket.send_json({"type": "heartbeat"})
+            await asyncio.sleep(0.1)
     except WebSocketDisconnect:
         menu_clients.remove(websocket)
         logger.info("Menu client disconnected")
     except Exception as e:
         logger.error(f"Menu WebSocket error: {str(e)}")
     finally:
+        heartbeat_task.cancel()
         try:
             pubsub.close()
             if websocket.client_state.name == "CONNECTED":
                 await websocket.close()
         except Exception as e:
             logger.warning(f"WebSocket close error: {str(e)}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
