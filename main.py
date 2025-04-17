@@ -55,6 +55,10 @@ menu_clients = []
 #         finally:
 #             await websocket.close()
 
+@app.get("/")
+def root():
+    return {"message": "WebSocket Server Running"}
+
 @app.websocket("/ws/kitchen")
 async def websocket_kitchen(websocket: WebSocket):
     await websocket.accept()
