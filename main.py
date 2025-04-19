@@ -61,14 +61,19 @@ async def websocket_kitchen(websocket: WebSocket):
 
 @app.websocket("/ws/menu")
 async def websocket_menu(websocket: WebSocket):
-    await websocket.accept()
-    logger.info("Client connected to /ws/menu")
-    menu_clients.append(websocket)
-    pubsub = redis_client.pubsub()
-    pubsub.subscribe("kitchen:menu_updates")
-    logger.info("Subscribed to kitchen:menu_updates")
+    if websocket.application_state != WebSocketState.CONNECTING:
+        logger.warning("WebSocket không ở trạng thái CONNECTING, bỏ qua accept()")
+        return
 
     try:
+        await websocket.accept()
+        logger.info("Client connected to /ws/menu")
+        menu_clients.append(websocket)
+
+        pubsub = redis_client.pubsub()
+        pubsub.subscribe("kitchen:menu_updates")
+        logger.info("Subscribed to kitchen:menu_updates")
+
         while True:
             message = pubsub.get_message(timeout=1.0)
             if message and message["type"] == "message":
@@ -80,12 +85,14 @@ async def websocket_menu(websocket: WebSocket):
                 except json.JSONDecodeError:
                     logger.error("Invalid JSON in Redis message")
             await asyncio.sleep(0.1)
+
     except WebSocketDisconnect:
         logger.info("Menu client disconnected")
     except Exception as e:
         logger.error(f"Menu WebSocket error: {str(e)}")
     finally:
-        menu_clients.remove(websocket)
+        with suppress(ValueError):
+            menu_clients.remove(websocket)
         pubsub.close()
         if websocket.application_state == WebSocketState.CONNECTED:
             with suppress(Exception):
