@@ -69,6 +69,9 @@ async def websocket_menu(websocket: WebSocket):
     pubsub.subscribe("kitchen:menu_updates")
     logger.info("Subscribed to kitchen:menu_updates")
 
+
+    heartbeat_task = asyncio.create_task(send_heartbeat())
+
     try:
         while True:
             message = pubsub.get_message(timeout=1.0)
